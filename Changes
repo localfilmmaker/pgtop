@@ -1,3 +1,7 @@
+0.03:
+
+  Removed wrong requirement of DBD::mysql, replaced with DBD::Pg.
+
 0.02:
 
   First working version. Several things don't work yet,

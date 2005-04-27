@@ -7,8 +7,8 @@ WriteMakefile(
               'EXE_FILES'		=> [ 'pgtop' ],
               'PREREQ_PM'		=> {
                                             Term::ReadKey => 2.10,
-                                            DBI           => 1.13,
-                                            DBD::mysql    => 1.0,
+                                            DBI           => 1.16,
+                                            DBD::Pg    => 1.22,
                                            },
               'LIBS'		=> [''], # e.g., '-lm'
               'DEFINE'		=> '', # e.g., '-DHAVE_SOMETHING'
