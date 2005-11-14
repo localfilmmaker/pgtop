@@ -1,3 +1,7 @@
+0.04:
+
+  Fixed annoying "Division by zero" errors.
+
 0.03:
 
   Removed wrong requirement of DBD::mysql, replaced with DBD::Pg.

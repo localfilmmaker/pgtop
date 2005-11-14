@@ -18,7 +18,7 @@ use DBI;
 use Getopt::Long;
 use Socket;
 
-$main::VERSION = '0.03';
+$main::VERSION = '0.04';
 
 $|=1;
 $0 = 'pgtop';
@@ -1321,6 +1321,7 @@ SQL
     # Slow queries here is n. of `seq_scan' queries
     $stref->{$_} = $stat_db->{$_} for keys %$stat_db;
 
+    $stref->{Questions} = 1 if $stref->{Questions} == 0;
 }
 
 
