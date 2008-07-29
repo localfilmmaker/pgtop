@@ -1,13 +1,15 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         pgtop
-version:      0.04
-version_from: pgtop
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                pgtop
+version:             0.05
+abstract:            ~
+license:             ~
+author:              ~
+generated_by:        ExtUtils::MakeMaker version 6.42
+distribution_type:   module
+requires:     
     DBD::Pg:                       1.22
     DBI:                           1.16
     Term::ReadKey:                 2.1
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3

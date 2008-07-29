@@ -1,5 +1,4 @@
-README for pgtop version 0.04
-       $Revision: 1.3 $
+README for pgtop version 0.05
 =============================
 
 WEB
@@ -8,7 +7,7 @@ WEB
 
 MAILING LIST
 
-  None, yet.
+  None
 
 ABOUT
 
@@ -27,6 +26,8 @@ WARNING
   pgtop is a quick & dirty hack over `mytop', and not all MySQL concepts map very
   well on PostgreSQL architecture and statistics collector. So don't expect a
   good quality out of this little hack... 
+
+  And, you should probably look for `ptop'.
 
 INSTALLATION
 
