@@ -17,7 +17,7 @@ use Getopt::Long;
 use Socket;
 use Term::ReadKey;
 
-$main::VERSION = '0.1';
+$main::VERSION = '0.2';
 
 $|=1;
 $0 = 'pgtop';
@@ -786,7 +786,7 @@ sub GetData()
         print RESET();
 
         printf "%-${host_width}s%${up_width}s\n",
-               "PgSQL on $config{host} ($db_version)",
+               "PgSQL on $config{host} ($db_version), db: $config{db}",
                "up $uptime $current_time";
         $lines_left--;
 
@@ -887,16 +887,16 @@ SELECT datname         AS "db",
 	   )               AS "Start",
 	   (current_timestamp - query_start)::text
                        AS "Time",
-       SUBSTR(
-			  (
-			   CASE current_query
-			   WHEN '<IDLE>' THEN 'Sleep'
-			   ELSE 'Query'
-			   END
-			   ),
-			  1, 1)    AS "Command",
+	  (
+	   CASE
+	      WHEN waiting THEN 'W'
+	      WHEN current_query = '<IDLE>' THEN 'S'
+	      ELSE 'Q'
+	   END
+	   )               AS "Command",
        current_query   AS "Info",
-       'local'         AS "Host"
+       client_addr     AS "Host",
+       waiting         AS is_waiting
   FROM pg_stat_activity
 SQL
 
@@ -929,7 +929,8 @@ SQL
             $thread->{Host} =~ s/:\d+$//;
             my $host = gethostbyaddr(inet_aton($thread->{Host}), AF_INET);
             $host =~ s/^([^.]+).*/$1/;
-            $thread->{Host} = $host;
+            $host = 'local'  if ($host eq 'localhost');  # just to make is shorter
+            $thread->{Host} = $host  if ($host);
         }
 
         ## Fix possible undefs
@@ -944,20 +945,20 @@ SQL
         $thread->{Host}    ||= '';
 
 		# Clean up Time
-		$thread->{Time} =~ s/\.\d+$//;
+		$thread->{Time} =~ s/\.\d+$//o;
 
         ## Normalize spaces -- mostly disabled for now.  This can
         ## break EXPLAIN if you try to explain a mangled query.  It
         ## may be re-enabled later as an option.
 
         ## leading space removal
-        $thread->{Info} =~ s/^\s*//;
+        $thread->{Info} =~ s/^\s*//o;
 
         ## remove newlines and carriage returns
-        $thread->{Info} =~ s/[\n\r]//g;
+        $thread->{Info} =~ s/[\n\r]+/ /gso;
 
         ## collpase whitespace
-        $thread->{Info} =~ s/\s+/ /g;
+        $thread->{Info} =~ s/\s+/ /go;
 
         ## stow it in the cache
 
@@ -984,12 +985,34 @@ SQL
 	my @fields = qw{
 		Id
 		User
+        Host
 		Start
 		Time
 		Command
+        Info
 	};
-#		Host
-#		db
+    my %label = (
+        Id      => 'PID',
+	    User    => 'User',
+        Host    => 'From',
+        Start   => 'Start',
+        Time    => 'Time',
+        Command => 'C',
+        Info    => 'Command or Query',
+    );
+
+    # This holds the printf format for displaying these fields (x is a place holder)
+    my %field_width_of = (
+        Id      => '%xd',
+	    User    => '%x.xs',
+        Host    => '%xs',
+        Start   => '%xs',
+        Time    => '%xs',
+        Command => '%xs',
+        Info    => '%-x.xs',
+    );
+
+
 	my @field_widths = map { 0 } @fields;
 	for (my $field_index=0; $field_index < @fields; $field_index++) {
 		my $num_threads_left = $lines_left - 1;
@@ -1008,13 +1031,24 @@ SQL
     my $used = 1 + scalar(@field_widths) + Sum(@field_widths);
     my $free = $width - $used;
 
+    # Add the remaining free columns to the last field
+    $field_widths[-1] += $free;
+
+    for my $field_index (0..$#fields) {
+        my $width = $field_widths[$field_index];
+        my $field = $fields[$field_index];
+        $field_width_of{$field} =~ s/x/$width/g;
+	}
+    my $row_printf_format = join(' ', map { $field_width_of{$_} } @fields). "\n";
+#	print "Row format: $row_printf_format\n";  ### DEBUG
+
     print BOLD();
-    printf join(' ', map { "%${_}s" } @field_widths) . " %-${free}s\n",
-        'PID', 'User', 'Start', 'Time', 'C', 'Query or State';
+    printf join(' ', map { "%${_}s" } @field_widths) . "\n",
+        (map { $label{$_} } @fields);
 
     print RESET();
-	printf join(' ', map { "%${_}s" } @field_widths) . " %-${free}s\n",
-      	(map { '-'x$_ } @field_widths), '-'x$free;
+	printf join(' ', map { "%${_}s" } @field_widths) . "\n",
+      	(map { '-'x$_ } @field_widths);
 
 
     $lines_left -= 1;
@@ -1047,29 +1081,28 @@ SQL
 
         if ($thread->{Info})
         {
-            $smInfo = substr $thread->{Info}, 0, $free;
+            $smInfo = substr $thread->{Info}, 0, $field_widths[-1];
         }
         elsif ($thread->{State})
         {
-            $smInfo = substr $thread->{State}, 0, $free;
+            $smInfo = substr $thread->{State}, 0, $field_widths[-1];
         }
         else
         {
             $smInfo = "";
         }
 
+        $thread->{Info} = $smInfo || '';
+ 
         if ($HAS_COLOR)
         {
             print YELLOW() if $thread->{Command} eq 'Q';
-#            print WHITE()  if $thread->{Command} eq 'Sleep';
             print BLUE()  if $thread->{Command} eq 'S';
             print GREEN()  if $thread->{Command} eq 'C';
         }
 
-#        printf "%8d %9.9s %15.15s %10.10s %9d %6.6s %-${free}.${free}s\n",
-        printf "%$field_widths[0]d %$field_widths[1].$field_widths[1]s ".
-			   "%$field_widths[2]s %$field_widths[3]s %$field_widths[4].$field_widths[4]s %-${free}.${free}s\n",
-            $thread->{Id}, $thread->{User}, $thread->{Start}, $thread->{Time}, $thread->{Command}, $smInfo;
+        # Print the row of data
+        printf $row_printf_format, (map { $thread->{$_} } @fields);
 
         print RESET() if $HAS_COLOR;
 

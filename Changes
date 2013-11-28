@@ -1,3 +1,9 @@
+0.2:
+  Show 'W' as Command for statements in waiting status.
+  Show client_addr as Host (remote connections).
+  Use shorter column headers to conserve space (and match width of data in their respective columns).
+  Dynamically calculate width for each column, and use printf formats for each.
+
 0.1:
   Added Start column to output.
   Removed static column names and widths, and use an array and dynamically size columns based on max field width from results.
