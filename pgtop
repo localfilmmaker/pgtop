@@ -66,7 +66,7 @@ sub cmd_q;
 ## Default Config Values
 
 my %config = (
-    delay         => 5,
+    delay         => 2,
     host          => 'localhost',
     db            => 'test',
     user          => 'postgres',
@@ -143,7 +143,7 @@ GetOptions(
     "host|h=s"            => \$config{host},
     "port|P=i"            => \$config{port},
     "socket|S=s"          => \$config{socket},
-    "delay|s=i"           => \$config{delay},
+    "delay|s=f"           => \$config{delay},
     "batch|batchmode|b"   => \$config{batchmode},
     "header!"             => \$config{header},
     "idle|i"              => \$config{idle},
@@ -1323,10 +1323,10 @@ sub cmd_s
     print RED(), "Seconds of Delay: ", RESET();
     my $secs = ReadLine(0);
 
-    if ($secs =~ /^\s*(\d+)/)
+    if ($secs =~ /^\s*(\d+(?:\.\d+)?)/)
     {
         $config{delay} = $1;
-        if ($config{delay} < 1)
+        if ($config{delay} < 1 and $config{delay} > 0)
         {
             $config{delay} = 1;
         }
