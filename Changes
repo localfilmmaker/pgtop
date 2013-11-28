@@ -1,3 +1,6 @@
+0.3:
+   Updated for use with Postgres versions greater than 9.0.0.
+
 0.2:
   Show 'W' as Command for statements in waiting status.
   Show client_addr as Host (remote connections).

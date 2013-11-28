@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 
+
 =pod
 
 =head1 NAME
@@ -16,8 +17,10 @@ use DBI;
 use Getopt::Long;
 use Socket;
 use Term::ReadKey;
+use version;
 
-$main::VERSION = '0.2';
+
+$main::VERSION = '0.3';
 
 $|=1;
 $0 = 'pgtop';
@@ -872,11 +875,16 @@ sub GetData()
     ## Threads
     ##
 
-    #my $proc_cmd = "show full processlist";
-    my $proc_cmd = <<SQL;
+    my $pid_field   = (version->parse($db_version) < version->parse('9.0.0')) ? 'procpid'       : 'pid';
+    my $query_field = (version->parse($db_version) < version->parse('9.0.0')) ? 'current_query' : 'query';
+    my $info_field = 'current_query ';
+    if (version->parse($db_version) >= version->parse('9.0.0')) {
+        $info_field = q{(CASE WHEN state = 'idle' THEN state ELSE query END)};
+    }
+    my $proc_cmd = <<"SQL";
 
 SELECT datname         AS "db",
-       procpid         AS "Id",
+       $pid_field      AS "Id",
        usename         AS "User",
 	   (
 		CASE WHEN query_start::date <> current_date THEN
@@ -890,11 +898,11 @@ SELECT datname         AS "db",
 	  (
 	   CASE
 	      WHEN waiting THEN 'W'
-	      WHEN current_query = '<IDLE>' THEN 'S'
+	      WHEN ($query_field = '<IDLE>' OR $query_field = 'idle') THEN 'S'
 	      ELSE 'Q'
 	   END
 	   )               AS "Command",
-       current_query   AS "Info",
+       $info_field     AS "Info",
        client_addr     AS "Host",
        waiting         AS is_waiting
   FROM pg_stat_activity
