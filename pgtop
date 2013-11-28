@@ -1,6 +1,4 @@
 #!/usr/bin/perl
-#
-# $Id: pgtop 86 2008-07-29 20:07:45Z Cosimo $
 
 =pod
 
@@ -19,7 +17,7 @@ use Getopt::Long;
 use Socket;
 use Term::ReadKey;
 
-$main::VERSION = '0.05';
+$main::VERSION = '0.1';
 
 $|=1;
 $0 = 'pgtop';
@@ -874,36 +872,29 @@ sub GetData()
     ## Threads
     ##
 
-    #my $sz = $width - 52;
-    my @sz   = (8, 9, 15, 10, 9, 6);
-    my $used = scalar(@sz) + Sum(@sz);
-    my $free = $width - $used;
-
-    print BOLD();
-
-    printf "%8s %9s %15s %10s %9s %6s %-${free}s\n",
-        'Id','User','Host/IP','DB','Time', 'Cmd', 'Query or State';
-
-    print RESET();
-
-    ##      Id User Host DB
-    printf "%8s %9s %15s %10s %9s %6s %-${free}s\n",
-        '--','----','-------','--','----', '---', '----------';
-
-    $lines_left -= 2;
-
     #my $proc_cmd = "show full processlist";
     my $proc_cmd = <<SQL;
 
 SELECT datname         AS "db",
        procpid         AS "Id",
        usename         AS "User",
-       (
-         CASE current_query
-         WHEN '<IDLE>' THEN 'Sleep'
-         ELSE 'Query'
-         END
-       )               AS "Command",
+	   (
+		CASE WHEN query_start::date <> current_date THEN
+		    TO_CHAR(query_start, 'Mon DD HH24:MM')
+		ELSE
+		    TO_CHAR(query_start, 'HH24:MM:SS')
+		END
+	   )               AS "Start",
+	   (current_timestamp - query_start)::text
+                       AS "Time",
+       SUBSTR(
+			  (
+			   CASE current_query
+			   WHEN '<IDLE>' THEN 'Sleep'
+			   ELSE 'Query'
+			   END
+			   ),
+			  1, 1)    AS "Command",
        current_query   AS "Info",
        'local'         AS "Host"
   FROM pg_stat_activity
@@ -945,11 +936,15 @@ SQL
 
         $thread->{db}      ||= '';
         $thread->{Info}    ||= '';
-        $thread->{Time}    ||= 0 ;
-        $thread->{Id}      ||= 0 ;
+        $thread->{Start}   ||= '';
+        $thread->{Time}    ||= '';
+        $thread->{Id}      ||= 0;
         $thread->{User}    ||= '';
         $thread->{Command} ||= '';
         $thread->{Host}    ||= '';
+
+		# Clean up Time
+		$thread->{Time} =~ s/\.\d+$//;
 
         ## Normalize spaces -- mostly disabled for now.  This can
         ## break EXPLAIN if you try to explain a mangled query.  It
@@ -978,13 +973,54 @@ SQL
 
     if (not $config{sort})
     {
-        @sorted = sort { $a->{Time} <=> $b->{Time} } @data
+        @sorted = sort { $b->{Time} cmp $a->{Time} } @data
     }
     else
     {
-        @sorted = sort { $b->{Time} <=> $a->{Time} } @data
+        @sorted = sort { $a->{Time} cmp $b->{Time} } @data
     }
 
+	# Find field widths
+	my @fields = qw{
+		Id
+		User
+		Start
+		Time
+		Command
+	};
+#		Host
+#		db
+	my @field_widths = map { 0 } @fields;
+	for (my $field_index=0; $field_index < @fields; $field_index++) {
+		my $num_threads_left = $lines_left - 1;
+		for (my $thread_index=0; $thread_index < @sorted; $thread_index++) {
+			next if ($fields[$field_index] eq 'User' && $sorted[$thread_index]->{User} !~ $config{filter_user});
+			next if ($fields[$field_index] eq 'db'   && $sorted[$thread_index]->{db}   !~ $config{filter_db});
+			next if ($fields[$field_index] eq 'Host' && $sorted[$thread_index]->{Host} !~ $config{filter_host});
+			my $len = length( $sorted[$thread_index]->{ $fields[$field_index] } );
+			$field_widths[$field_index] ||= 1;
+			$field_widths[$field_index] = $len  if ($field_widths[$field_index] < $len);
+			last if (--$num_threads_left <= 0);
+		}
+	}
+
+	# Print the column headers
+    my $used = 1 + scalar(@field_widths) + Sum(@field_widths);
+    my $free = $width - $used;
+
+    print BOLD();
+    printf join(' ', map { "%${_}s" } @field_widths) . " %-${free}s\n",
+        'PID', 'User', 'Start', 'Time', 'C', 'Query or State';
+
+    print RESET();
+	printf join(' ', map { "%${_}s" } @field_widths) . " %-${free}s\n",
+      	(map { '-'x$_ } @field_widths), '-'x$free;
+
+
+    $lines_left -= 1;
+
+
+	# Print each thread
     foreach my $thread (@sorted)
     {
         # Check to see if we can skip out.  We skip out if we know the
@@ -1024,14 +1060,16 @@ SQL
 
         if ($HAS_COLOR)
         {
-            print YELLOW() if $thread->{Command} eq 'Query';
-            print WHITE()  if $thread->{Command} eq 'Sleep';
-            print GREEN()  if $thread->{Command} eq 'Connect';
+            print YELLOW() if $thread->{Command} eq 'Q';
+#            print WHITE()  if $thread->{Command} eq 'Sleep';
+            print BLUE()  if $thread->{Command} eq 'S';
+            print GREEN()  if $thread->{Command} eq 'C';
         }
 
-        printf "%8d %9.9s %15.15s %10.10s %9d %6.6s %-${free}.${free}s\n",
-            $thread->{Id}, $thread->{User}, $thread->{Host}, $thread->{db},
-            $thread->{Time}, $thread->{Command}, $smInfo;
+#        printf "%8d %9.9s %15.15s %10.10s %9d %6.6s %-${free}.${free}s\n",
+        printf "%$field_widths[0]d %$field_widths[1].$field_widths[1]s ".
+			   "%$field_widths[2]s %$field_widths[3]s %$field_widths[4].$field_widths[4]s %-${free}.${free}s\n",
+            $thread->{Id}, $thread->{User}, $thread->{Start}, $thread->{Time}, $thread->{Command}, $smInfo;
 
         print RESET() if $HAS_COLOR;
 
